@@ -32,6 +32,10 @@ const BG_SVGS = [
     dragging: null
   };
   
+  // touch gesture state
+  let touchGesture = {active:false, target:null, initialDist:0, initialAngle:0, startScale:1, startRot:0};
+  let isTouchGestureActive = false;
+  
   // preload backgrounds and stickers
   const bgImgs = [];
   const stickerImgs = {};
@@ -108,6 +112,7 @@ const BG_SVGS = [
   
   // ---------- improved hit-testing & rotate handle ----------
   function getPointerPos(e){ const rect = canvas.getBoundingClientRect(); const x = (e.clientX - rect.left) * (canvas.width / rect.width); const y = (e.clientY - rect.top) * (canvas.height / rect.height); return {x,y}; }
+  function getTouchPos(t){ const rect = canvas.getBoundingClientRect(); const x = (t.clientX - rect.left) * (canvas.width / rect.width); const y = (t.clientY - rect.top) * (canvas.height / rect.height); return {x,y}; }
   
   function isPointInSticker(s, x, y){ // transform point into sticker local coordinates (inverse rotation)
     const dx = x - s.x; const dy = y - s.y; const cos = Math.cos(-s.rot||0); const sin = Math.sin(-s.rot||0);
@@ -120,11 +125,17 @@ const BG_SVGS = [
   function getRotateHandlePos(s){ const sw = (s.w|| (s===state.main ? state.mainImage && state.mainImage.width : s.img.width)) * (s.scale||1); const sh = (s.h|| (s===state.main ? state.mainImage && state.mainImage.height : s.img.height)) * (s.scale||1); const d = Math.max(sw, sh)/2 + 28; // distance from center
     const hx = s.x + Math.sin(s.rot||0) * d; const hy = s.y - Math.cos(s.rot||0) * d; return {x: hx, y: hy}; }
   
+  // ---------- touch gesture helpers ----------
+  function distBetween(a,b){ const dx = a.x-b.x; const dy = a.y-b.y; return Math.hypot(dx,dy); }
+  function angleBetween(a,b){ return Math.atan2(b.y-a.y, b.x-a.x); }
+  
   // ---------- Pointer interactions (with rotate handle) ----------
   let pointerDown = false;
-  canvas.addEventListener('pointerdown',(e)=>{ const p = getPointerPos(e); pointerDown = true;
+  canvas.addEventListener('pointerdown',(e)=>{ // ignore pointer events when a multi-touch gesture is active
+    if(isTouchGestureActive) return;
+    const p = getPointerPos(e); pointerDown = true;
     // check rotate handle first for selected sticker
-    if(state.selectedSticker>-1){ const s = state.stickers[state.selectedSticker]; const h = getRotateHandlePos(s); const dx = p.x - h.x; const dy = p.y - h.y; if(Math.hypot(dx,dy) < 14){ // start rotating sticker
+    if(state.selectedSticker>-1){ const s = state.stickers[state.selectedSticker]; const h = getRotateHandlePos(s); const threshold = (e.pointerType==='touch')?20:14; const dx = p.x - h.x; const dy = p.y - h.y; if(Math.hypot(dx,dy) < threshold){ // start rotating sticker
         state.dragging = {type:'sticker-rotate', index: state.selectedSticker, startAngle: Math.atan2(p.y - s.y, p.x - s.x) - s.rot}; canvas.style.cursor = 'grabbing'; return; }
     }
   
@@ -133,7 +144,7 @@ const BG_SVGS = [
         const dx = p.x - s.x; const dy = p.y - s.y; state.dragging = {type:'sticker-move', index:i, ox:dx, oy:dy}; updateStickerUI(); render(); canvas.style.cursor = 'grabbing'; return; }}
   
     // check rotate handle for main image (if any)
-    if(state.mainImage){ const h = getRotateHandlePos(state.main); const dxh = p.x - h.x; const dyh = p.y - h.y; if(Math.hypot(dxh,dyh) < 14){ // start rotating photo
+    if(state.mainImage){ const h = getRotateHandlePos(state.main); const threshold = (e.pointerType==='touch')?20:14; const dxh = p.x - h.x; const dyh = p.y - h.y; if(Math.hypot(dxh,dyh) < threshold){ // start rotating photo
         state.selectedSticker=-1; state.selectedMain=true; state.dragging = {type:'photo-rotate', startAngle: Math.atan2(p.y - state.main.y, p.x - state.main.x) - state.main.rot}; canvas.style.cursor = 'grabbing'; document.getElementById('photoRot').value = state.main.rot * 180/Math.PI; return; }}
   
     // if movePhoto enabled and mainImage exists, check main image bounding (with rotation)
@@ -143,7 +154,7 @@ const BG_SVGS = [
     state.selectedSticker=-1; state.selectedMain=false; updateStickerUI(); render();
   });
   
-  canvas.addEventListener('pointermove',(e)=>{ const p = getPointerPos(e);
+  canvas.addEventListener('pointermove',(e)=>{ if(isTouchGestureActive) return; const p = getPointerPos(e);
     if(!pointerDown || !state.dragging) { // update cursor when hovering handles or stickers
       // hover rotate handle for selected sticker or main
       let hoveringHandle = false;
@@ -161,10 +172,35 @@ const BG_SVGS = [
     else if(d.type==='photo-rotate'){ const s = state.main; const ang = Math.atan2(p.y - s.y, p.x - s.x); s.rot = ang - d.startAngle; photoRot.value = s.rot * 180/Math.PI; render(); }
   });
   
-  canvas.addEventListener('pointerup',(e)=>{ pointerDown=false; state.dragging=null; canvas.style.cursor='default'; });
-  canvas.addEventListener('pointercancel',(e)=>{ pointerDown=false; state.dragging=null; canvas.style.cursor='default'; });
+  canvas.addEventListener('pointerup',(e)=>{ if(isTouchGestureActive) return; pointerDown=false; state.dragging=null; canvas.style.cursor='default'; });
+  canvas.addEventListener('pointercancel',(e)=>{ if(isTouchGestureActive) return; pointerDown=false; state.dragging=null; canvas.style.cursor='default'; });
   
-  // wheel to change scale of selected sticker
+  // ---------- touch (multi-touch) gestures for mobile ----------
+  canvas.addEventListener('touchstart',(e)=>{
+    if(e.touches.length===2){ e.preventDefault(); isTouchGestureActive = true; touchGesture.active = true;
+      const t0 = getTouchPos(e.touches[0]); const t1 = getTouchPos(e.touches[1]); touchGesture.initialDist = distBetween(t0,t1); touchGesture.initialAngle = angleBetween(t0,t1);
+      // prefer selected sticker, else selected main
+      if(state.selectedSticker>-1){ touchGesture.target = {type:'sticker', index: state.selectedSticker}; const s = state.stickers[state.selectedSticker]; touchGesture.startScale = s.scale; touchGesture.startRot = s.rot; }
+      else if(state.selectedMain){ touchGesture.target = {type:'main'}; touchGesture.startScale = state.main.scale; touchGesture.startRot = state.main.rot; }
+      else { touchGesture.target = null; }
+    }
+  }, {passive:false});
+  
+  canvas.addEventListener('touchmove',(e)=>{
+    if(!touchGesture.active) return; if(e.touches.length<2) return; e.preventDefault();
+    const t0 = getTouchPos(e.touches[0]); const t1 = getTouchPos(e.touches[1]); const d = distBetween(t0,t1); const ang = angleBetween(t0,t1);
+    const scaleFactor = d / touchGesture.initialDist;
+    const deltaAng = ang - touchGesture.initialAngle;
+    if(touchGesture.target){ if(touchGesture.target.type==='sticker'){ const s = state.stickers[touchGesture.target.index]; s.scale = Math.max(0.1, touchGesture.startScale * scaleFactor); s.rot = touchGesture.startRot + deltaAng; state.selectedMain = false; updateStickerUI(); render(); }
+      else if(touchGesture.target.type==='main'){ state.main.scale = Math.max(0.1, touchGesture.startScale * scaleFactor); state.main.rot = touchGesture.startRot + deltaAng; photoRot.value = state.main.rot * 180/Math.PI; render(); }
+    }
+  }, {passive:false});
+  
+  canvas.addEventListener('touchend',(e)=>{
+    if(e.touches.length < 2){ touchGesture.active=false; touchGesture.target=null; isTouchGestureActive=false; }
+  }, {passive:false});
+  
+  // wheel to change scale of selected sticker (desktop)
   canvas.addEventListener('wheel',(e)=>{ if(state.selectedSticker>-1){ e.preventDefault(); const s = state.stickers[state.selectedSticker]; const delta = e.deltaY>0? -0.05:0.05; s.scale = Math.max(0.1, s.scale + delta); stickerScale.value = s.scale; render(); }});
   
   // ---------- rendering ----------
@@ -176,7 +212,7 @@ const BG_SVGS = [
       // draw faint outline when movePhoto enabled
       if(movePhoto.checked){ ctx.save(); ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=4; ctx.strokeRect(-mw/2,-mh/2,mw,mh); ctx.restore(); }
       // draw rotate handle if main is selected
-      if(state.selectedMain){ const handleDist = Math.max(mw, mh)/2 + 28; const hx = Math.sin(state.main.rot||0) * handleDist; const hy = -Math.cos(state.main.rot||0) * handleDist; ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fill(); ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=2; ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, -mh/2); ctx.lineTo(hx, hy); ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=2; ctx.stroke(); }
+      if(state.selectedMain){ const handleDist = Math.max(mw, mh)/2 + 28; const hx = Math.sin(state.main.rot||0) * handleDist; const hy = -Math.cos(state.main.rot||0) * handleDist; ctx.beginPath(); ctx.arc(hx, hy, 14, 0, Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fill(); ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=2; ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, -mh/2); ctx.lineTo(hx, hy); ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=2; ctx.stroke(); }
       ctx.restore();
     }
     // stickers
@@ -185,7 +221,7 @@ const BG_SVGS = [
       if(i===state.selectedSticker){ ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=2; ctx.strokeRect(-sw/2, -sh/2, sw, sh);
         // draw rotate handle
         const handleDist = Math.max(sw, sh)/2 + 28; const hx = Math.sin(s.rot||0) * handleDist; const hy = -Math.cos(s.rot||0) * handleDist;
-        ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fill(); ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=2; ctx.stroke();
+        ctx.beginPath(); ctx.arc(hx, hy, 14, 0, Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fill(); ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=2; ctx.stroke();
         // draw small line connecting
         ctx.beginPath(); ctx.moveTo(0, -sh/2); ctx.lineTo(hx, hy); ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=2; ctx.stroke();
       }
@@ -196,9 +232,9 @@ const BG_SVGS = [
   // resize canvas to be responsive but keep drawing scale
   function resizeCanvas(){ const wrap = canvas.parentElement; // keep aspect ratio portrait like example
     const oldW = canvasW; const oldH = canvasH;
-    const maxW = Math.min(1000, wrap.clientWidth - 20);
+    const maxW = Math.min(1100, wrap.clientWidth - 20);
     // choose height by aspect
-    const desiredW = Math.max(360, maxW);
+    const desiredW = Math.max(320, maxW);
     const displayW = desiredW; const displayH = Math.round(displayW * (1500/900));
     // set CSS size and internal pixel ratio (use 1:1 to keep coordinates simple)
     canvas.style.width = displayW + 'px'; canvas.style.height = displayH + 'px';

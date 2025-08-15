@@ -8,7 +8,7 @@
 </head>
 <body>
   <div class="app">
-    <div class="panel">
+    <div class="panel controls-panel">
       <h2>Basic Editor</h2>
       <div class="controls">
         <label class="row"><input id="upload" type="file" accept="image/*"> <span class="muted">Subir imagen</span></label>
@@ -26,7 +26,7 @@
           <div class="muted">Settings</div>
           <div class="row"><label class="muted">Zoom</label><input id="photoZoom" type="range" min="0.2" max="2.5" step="0.01" value="1"></div>
           <div class="row"><label class="muted">Rotación foto</label><input id="photoRot" type="range" min="-180" max="180" step="1" value="0"></div>
-          <div class="row" style="margin-top:6px"><label><input id="movePhoto" type="checkbox"> Mover foto</label><span class="muted" style="margin-left:auto">Click y arrastra</span></div>
+          <div class="row" style="margin-top:6px"><label><input id="movePhoto" type="checkbox"> Mover foto</label><span class="muted" style="margin-left:auto">Click / Tocar y arrastra</span></div>
         </div>
 
         <div id="stickerControls" style="display:none">
@@ -40,11 +40,11 @@
           <button id="exportBtn">Exportar y descargar</button>
           <button id="clearBtn" class="small">Limpiar todo</button>
         </div>
-        <div class="info">Consejo: arrastra el sticker para moverlo, usa el pequeño punto encima para rotarlo. Scroll para escalar. Para rotar la foto subida: haz click sobre la foto (seleccionala) y usa el punto encima o el control de rotación.</div>
+        <div class="info">Consejo móvil: pellizca para escalar y gira con dos dedos para rotar un sticker o la foto (primero selecciónalo). También puedes usar el knob visible para rotar y el slider para precisión.</div>
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel preview-panel">
       <h2>Vista previa</h2>
       <div class="canvas-wrap">
         <canvas id="editor" width="900" height="1500"></canvas>
