@@ -21,6 +21,25 @@ button, input[type=file], .btn{background:#171717;color:#eee;border:1px solid #2
 .footer-actions{display:flex;gap:8px;align-items:center;margin-top:8px}
 .info{font-size:13px;color:#bbb}
 
+/* Make the editor responsive */
+#editor-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem;
+}
+
+/* Responsive canvas */
+#editor-canvas {
+  max-width: 100%;
+  height: auto;          /* keeps aspect ratio */
+  max-height: 50vh;      /* so it never takes more than half of the screen height */
+  border: 1px solid #ccc;
+  border-radius: 12px;
+  touch-action: none;
+}
+
+
 /* Mobile tweaks */
 @media(max-width:900px){
   .app{grid-template-columns:1fr;}
